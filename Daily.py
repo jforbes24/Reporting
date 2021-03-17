@@ -17,18 +17,19 @@ gc = gspread.authorize(credentials)
 yesterday = datetime.now() - timedelta(days = 1)
 dateYestXL = yesterday.strftime('%Y-%m-%d') # "yyyy-mm-dd" format
 dateYestGS = yesterday.strftime('%d %b %Y').lstrip('0').replace(' 0', ' ') # "d mmm yyyy" format
-dateYestSFX = yesterday.strftime('%d-%b-%Y') # "dd-mmm-yyyy" format
+dateYestSFX = yesterday.strftime('%d/%m/%Y') # "dd/mm/yyyy" format
 dateYestBDFR = yesterday.strftime('%d/%m/%Y') # "dd/mm/yyyy" format
 
 def sapDigital():
     try:
         # opening the source file with pandas to a dataframe -- pandas
         daily = pd.read_excel(r'C:/Users/forbej06/OneDrive - Kingfisher PLC/email data/SAP/Daily Orders Report/SAP Daily Orders (B&QTPCAFR).xlsx')
+        initDate = daily.iloc[1,3].strftime('%d %b %Y').lstrip('0').replace(' 0', ' ') # "d mmm yyyy" format
 
         # filter 'Digital Sales' excel row by previous day and retailer -- pandas
-        TPyest = daily[(daily['Calendar Date'] == dateYestXL) & (daily['Order Creation Site Label'] == 'TRADEPOINT WEBSITE')]
-        DIYyest = daily[(daily['Calendar Date'] == dateYestXL) & (daily['Order Creation Site Label'] == 'DIY.COM')]
-        CAFRyest = daily[(daily['Calendar Date'] == dateYestXL) & (daily['Order Creation Site Label'] == 'Castorama.fr site Web')]
+        TPyest = daily[(daily['Order Creation Site Label'] == 'TRADEPOINT WEBSITE')]
+        DIYyest = daily[(daily['Order Creation Site Label'] == 'DIY.COM')]
+        CAFRyest = daily[(daily['Order Creation Site Label'] == 'Castorama.fr site Web')]
 
         # slice filtered row ready for transfer -- pandas
         # 'digital sales'
@@ -60,13 +61,13 @@ def sapDigital():
         CAFR = Spread('Daily Realised Sales Revenue', 'CAFR')
 
         # locate yesterday's date in gspread and parse row-number for reference cell
-        cellTP = gsTP.find(dateYestGS)
+        cellTP = gsTP.find(initDate)
         row_numDigTP = 'D'+(str(cellTP.row))
 
-        cellDIY = gsTP.find(dateYestGS)
+        cellDIY = gsTP.find(initDate)
         row_numDigDIY = 'D'+(str(cellDIY.row))
 
-        cellCAFR = gsTP.find(dateYestGS)
+        cellCAFR = gsTP.find(initDate)
         row_numDigCAFR = 'D'+(str(cellCAFR.row))
         
         # append slice to google sheet
@@ -84,16 +85,17 @@ def sapTotal():
         # opening the source file with pandas to a dataframe -- pandas
         totalGBP = pd.read_excel(r'C:/Users/forbej06/OneDrive - Kingfisher PLC/email data/SAP/Daily Orders Report/Total Daily GBP/Store Sales Performance - Daily GBP.xlsx')
         totalEUR = pd.read_excel(r'C:/Users/forbej06/OneDrive - Kingfisher PLC/email data/SAP/Daily Orders Report/Total Daily EUR/Store Sales Performance - Daily EU.xlsx')
-
-        # filter 'Total Sales' excel row by previous day and retailer -- pandas
-        totalYestGBP = totalGBP[(totalGBP['Calendar Date'] == dateYestXL)]
-        totalYestEUR = totalEUR[(totalEUR['Calendar Date'] == dateYestXL)]
+        pd.set_option('display.max_columns', None)
+        
+        # filter 'Total Sales' excel row by initial day and retailer -- pandas
+        initDateGBP = totalGBP.iloc[0,2].strftime('%d %b %Y').lstrip('0').replace(' 0', ' ') # "d mmm yyyy" format
+        initDateEUR = totalEUR.iloc[0,2].strftime('%d %b %Y').lstrip('0').replace(' 0', ' ') # "d mmm yyyy" format
 
         # slice filtered row ready for transfer -- pandas
         # 'total sales'
-        totalTP = totalYestGBP.loc[:, ['Calendar Date', 'Total Trade Sales GBP']]
-        totalBQ = totalYestGBP.loc[:, ['Calendar Date', 'Total B&Q Sales GBP']]
-        totalCAFR = totalYestEUR.loc[:, ['Calendar Date', 'Total CAFR Sales EU Inc VAT']]
+        totalTP = totalGBP.loc[:, ['Calendar Date', 'Total Trade Sales GBP']]
+        totalBQ = totalGBP.loc[:, ['Calendar Date', 'Total B&Q Sales GBP']]
+        totalCAFR = totalEUR.loc[:, ['Calendar Date', 'Total CAFR Sales EU Inc VAT']]
 
         # create dataframe
         # 'total sales'
@@ -119,13 +121,13 @@ def sapTotal():
         CAFR = Spread('Daily Realised Sales Revenue', 'CAFR')
 
         # locate yesterday's date in gspread and parse row-number for reference cell
-        cellTP = gsTP.find(dateYestGS)
+        cellTP = gsTP.find(initDateGBP)
         row_numTotTP = 'I'+(str(cellTP.row))
 
-        cellDIY = gsDIY.find(dateYestGS)
+        cellDIY = gsDIY.find(initDateGBP)
         row_numTotDIY = 'I'+(str(cellDIY.row))
 
-        cellCAFR = gsCAFR.find(dateYestGS)
+        cellCAFR = gsCAFR.find(initDateEUR)
         row_numTotCAFR = 'N'+(str(cellCAFR.row))
 
         # append slice to google sheet
@@ -145,6 +147,11 @@ def sfxWeb():
         # Create DataFrame
         df = pd.DataFrame(dailyXL)
 
+        # reset header
+        df.columns = df.iloc[0]
+        df = df.reindex(df.index.drop(0)).reset_index(drop=True)
+        df.columns.name = None
+
         # update dataframe index as 'Calendar Date'
         df.set_index('Date', inplace=True)
         
@@ -156,26 +163,34 @@ def sfxWeb():
 
         # slice filtered row ready for transfer -- pandas
         # 'digital sales'
-        sfxW = SFXyestWeb.loc[:, ['# Sales Orders', 'Sales Net excl VAT £', 'AOV £', 'Demand Net excl VAT £']]
-
+        sfxW = SFXyestWeb.iloc[:, [1,2,3,4]]
+        sfxieW = SFXyestWeb.iloc[:, [5,6,7,8]]
+        
         # create datafram
         dfSFX = pd.DataFrame(sfxW)
+        dfSFXIE = pd.DataFrame(sfxieW)
 
         # opening destination file & sheets with gspread
         gsDaily = gc.open('Daily Realised Sales Revenue')
         gsSFX = gsDaily.worksheet('SFX')
+        gsSFXIE = gsDaily.worksheet('SFXIE')
 
         # opening destination file with gspread-pandas
         SFX = Spread('Daily Realised Sales Revenue', 'SFX')
+        SFXIE = Spread('Daily Realised Sales Revenue', 'SFXIE')
 
         # locate yesterday's date in gspread and parse row-number for reference cell
         
         cellSFX = gsSFX.find(dateYestGS)
         row_numDigSFX = 'C'+(str(cellSFX.row))
 
+        cellSFXIE = gsSFXIE.find(dateYestGS)
+        row_numDigSFXIE = 'C'+(str(cellSFXIE.row))
+
         # append slice to google sheet
         # 'digital sales'
         SFX.df_to_sheet(dfSFX, index=False, headers=False, sheet='SFX', start=row_numDigSFX, replace=False)
+        SFXIE.df_to_sheet(dfSFXIE, index=False, headers=False, sheet='SFXIE', start=row_numDigSFXIE, replace=False)
     except Exception as ex:
         print("** SFX Web failed: ", ex)
         
@@ -188,36 +203,57 @@ def sfxTotal():
         # Create DataFrame
         df = pd.DataFrame(dailyXL)
 
+        # reset header
+        df.columns = df.iloc[0]
+        df = df.reindex(df.index.drop(0)).reset_index(drop=True)
+        df.columns.name = None
+
         # update dataframe index as 'Calendar Date'
         df.set_index('Date', inplace=True)
         
         # fill merged date cells
         df.index = pd.Series(df.index).fillna(method='ffill')
 
+        # rename columns
+        df.columns = ['Origin Channel', '# Sales Orders UK', 'Sales Net excl VAT £ UK', 'AOV £ UK', 'Demand Net excl VAT £ UK',
+                      '# Sales Orders IE', 'Sales Net excl VAT £ IE', 'AOV £ IE', 'Demand Net excl VAT £ IE']
+        
+        # remove duplicate banner columns
+        dfUK = df.drop(df.columns[[5,6,7,8]], axis=1)
+        dfIE = df.drop(df.columns[[1,2,3,4]], axis=1)
+        
         # slice filtered row ready for transfer -- pandas
         # 'total sales'
-        SFXyest = df.loc[dateYestSFX, ['# Sales Orders', 'Sales Net excl VAT £', 'AOV £', 'Demand Net excl VAT £']].sum()
+        SFXyest = dfUK.loc[dateYestSFX, ['# Sales Orders UK', 'Sales Net excl VAT £ UK', 'AOV £ UK', 'Demand Net excl VAT £ UK']].sum()
+        SFXIEyest = dfIE.loc[dateYestSFX, ['# Sales Orders IE', 'Sales Net excl VAT £ IE', 'AOV £ IE', 'Demand Net excl VAT £ IE']].sum()
 
         SFXyest = pd.DataFrame(SFXyest).transpose()
+        SFXIEyest = pd.DataFrame(SFXIEyest).transpose()
 
         # create SFXyest dataframe
-        df2 = pd.DataFrame(SFXyest)
+        # df2 = pd.DataFrame(SFXyest)
         
         # opening destination file & sheets with gspread
         gsDaily = gc.open('Daily Realised Sales Revenue')
         gsSFX = gsDaily.worksheet('SFX')
+        gsSFXIE = gsDaily.worksheet('SFXIE')
 
         # opening destination file with gspread-pandas
         SFX = Spread('Daily Realised Sales Revenue', 'SFX')
+        SFXIE = Spread('Daily Realised Sales Revenue', 'SFXIE')
 
         # locate yesterday's date in gspread and parse row-number for reference cell
         
         cellSFX = gsSFX.find(dateYestGS)
         row_numTotSFX = 'G'+(str(cellSFX.row))
+
+        cellSFXIE = gsSFXIE.find(dateYestGS)
+        row_numTotSFXIE = 'G'+(str(cellSFXIE.row))
         
         # append slice to google sheet
         # 'total sales'
         SFX.df_to_sheet(SFXyest, index=False, headers=False, sheet='SFX', start=row_numTotSFX, replace=False)
+        SFXIE.df_to_sheet(SFXIEyest, index=False, headers=False, sheet='SFXIE', start=row_numTotSFXIE, replace=False)
     except Exception as ex:
         print("** SFX Total failed: ", ex)
         
@@ -230,37 +266,59 @@ def sfxTotalAOV():
         # Create DataFrame
         df = pd.DataFrame(dailyXL)
 
+        # reset header
+        df.columns = df.iloc[0]
+        df = df.reindex(df.index.drop(0)).reset_index(drop=True)
+        df.columns.name = None
+
         # update dataframe index as 'Calendar Date'
         df.set_index('Date', inplace=True)
         
         # fill merged date cells
         df.index = pd.Series(df.index).fillna(method='ffill')
 
+        # rename columns
+        df.columns = ['Origin Channel', '# Sales Orders UK', 'Sales Net excl VAT £ UK', 'AOV £ UK', 'Demand Net excl VAT £ UK',
+                      '# Sales Orders IE', 'Sales Net excl VAT £ IE', 'AOV £ IE', 'Demand Net excl VAT £ IE']
         
         # slice filtered row ready for transfer -- pandas
         # 'total sales'
-        SFXyest = df.loc[dateYestSFX, ['Sales Net excl VAT £', '# Sales Orders']].sum()
-        aov = df.loc[dateYestSFX, 'AOV £'] = SFXyest['Sales Net excl VAT £'] / SFXyest['# Sales Orders']
+        SFXyest = df.loc[dateYestSFX, ['Sales Net excl VAT £ UK', '# Sales Orders UK']].sum()
+        aovUK = df.loc[dateYestSFX, 'AOV £ UK'] = SFXyest['Sales Net excl VAT £ UK'] / SFXyest['# Sales Orders UK']
+
+        SFXIEyest = df.loc[dateYestSFX, ['Sales Net excl VAT £ IE', '# Sales Orders IE']].sum()
+        aovIE = df.loc[dateYestSFX, 'AOV £ IE'] = SFXIEyest['Sales Net excl VAT £ IE'] / SFXIEyest['# Sales Orders IE']
 
         # opening destination file & sheets with gspread
         gsDaily = gc.open('Daily Realised Sales Revenue')
         gsSFX = gsDaily.worksheet('SFX')
+        gsSFXIE = gsDaily.worksheet('SFXIE')
 
         # opening destination file with gspread-pandas
         SFX = Spread('Daily Realised Sales Revenue', 'SFX')
-
+        SFXIE = Spread('Daily Realised Sales Revenue', 'SFXIE')
+        
         # locate yesterday's date in gspread and parse row-number for reference cell
         cellSFX = gsSFX.find(dateYestGS)
+        cellSFXIE = gsSFXIE.find(dateYestGS)
         
-        # update 'total AOV' -- gspread
-
+        # update 'total AOV UK' -- gspread
         headers = gsSFX.row_values(1)
         colToUpdate = headers.index('SFX Total AOV')+1
         cellToUpdate = gsSFX.cell(cellSFX.row, colToUpdate)
-        aovTotal = cellToUpdate.value = aov
+        aovTotal = cellToUpdate.value = aovUK
         cell_list = []
         cell_list.append(cellToUpdate)
         gsSFX.update_cells(cell_list)
+
+        # update 'total AOV IE' -- gspread
+        headers = gsSFXIE.row_values(1)
+        colToUpdate = headers.index('SFXIE Total AOV')+1
+        cellToUpdate = gsSFXIE.cell(cellSFXIE.row, colToUpdate)
+        aovTotalIE = cellToUpdate.value = aovIE
+        cell_list = []
+        cell_list.append(cellToUpdate)
+        gsSFXIE.update_cells(cell_list)
     except Exception as ex:
         print("** SFX Total AOV failed: ", ex)
 
