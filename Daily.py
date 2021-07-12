@@ -14,11 +14,15 @@ credentials = ServiceAccountCredentials.from_json_keyfile_name('Credentials.json
 gc = gspread.authorize(credentials)
 
 # get yesterday's date
+today = datetime.now()
 yesterday = datetime.now() - timedelta(days = 1)
+lastWeek = datetime.now() - timedelta(days = 8)
 dateYestXL = yesterday.strftime('%Y-%m-%d') # "yyyy-mm-dd" format
 dateYestGS = yesterday.strftime('%d %b %Y').lstrip('0').replace(' 0', ' ') # "d mmm yyyy" format
+dateLwGS = lastWeek.strftime('%d %b %Y').lstrip('0').replace(' 0', ' ') # "d mmm yyyy" format
 dateYestSFX = yesterday.strftime('%d/%m/%Y') # "dd/mm/yyyy" format
 dateYestBDFR = yesterday.strftime('%d/%m/%Y') # "dd/mm/yyyy" format
+dateLwBDFR = lastWeek.strftime('%d/%m/%Y') # "dd/mm/yyyy" format
 
 def sapDigital():
     try:
@@ -75,7 +79,7 @@ def sapDigital():
         TP.df_to_sheet(dfTP, index=False, headers=False, sheet='TP', start=row_numDigTP, replace=False)
         DIY.df_to_sheet(dfDIY, index=False, headers=False, sheet='B&Q', start=row_numDigDIY, replace=False)
         CAFR.df_to_sheet(dfCAFR, index=False, headers=False, sheet='CAFR', start=row_numDigCAFR, replace=False)
-
+        print("SAP Digital complete")
     except Exception as ex:
         print("** SAP Digital failed: ", ex)
 
@@ -135,6 +139,7 @@ def sapTotal():
         TP.df_to_sheet(dfTotalTP, index=False, headers=False, sheet='TP', start=row_numTotTP, replace=False)
         DIY.df_to_sheet(dfTotalBQ, index=False, headers=False, sheet='B&Q', start=row_numTotDIY, replace=False)
         CAFR.df_to_sheet(dfTotalCAFR, index=False, headers=False, sheet='CAFR', start=row_numTotCAFR, replace=False)
+        print("SAP Total complete")
     except Exception as ex:
         print("** SAP Total failed: ", ex)
         
@@ -152,20 +157,29 @@ def sfxWeb():
         df = df.reindex(df.index.drop(0)).reset_index(drop=True)
         df.columns.name = None
 
+        # remove 'date Total'
+        df.drop(df[df['Date'].str.contains(' Total')==True].index, inplace=True)
+                
+        # fill merged date cells
+        df['Date'] = pd.Series(df['Date']).fillna(method='ffill')
+                
         # update dataframe index as 'Calendar Date'
         df.set_index('Date', inplace=True)
-        
-        # fill merged date cells
-        df.index = pd.Series(df.index).fillna(method='ffill')
-     
+                
+        # format 'Date' as datetime
+        df.index = pd.to_datetime(df.index)
+                     
         # filter 'Web Sales' excel row by previous day and 'Origin Channel' -- pandas
         SFXyestWeb = df[(df.index == dateYestSFX) & (df['Origin Channel'] == 'WEB')]
-
+        SFXallWeb = df[(df['Origin Channel'] == 'WEB')]
+        SFXallWeb.to_excel(r'C:\Users\forbej06\OneDrive - Kingfisher PLC\email data\SAP\Daily Orders Report\SFXallWeb.xlsx')
+                
+                
         # slice filtered row ready for transfer -- pandas
         # 'digital sales'
         sfxW = SFXyestWeb.iloc[:, [1,2,3,4]]
         sfxieW = SFXyestWeb.iloc[:, [5,6,7,8]]
-        
+                
         # create datafram
         dfSFX = pd.DataFrame(sfxW)
         dfSFXIE = pd.DataFrame(sfxieW)
@@ -180,7 +194,7 @@ def sfxWeb():
         SFXIE = Spread('Daily Realised Sales Revenue', 'SFXIE')
 
         # locate yesterday's date in gspread and parse row-number for reference cell
-        
+                
         cellSFX = gsSFX.find(dateYestGS)
         row_numDigSFX = 'C'+(str(cellSFX.row))
 
@@ -191,8 +205,10 @@ def sfxWeb():
         # 'digital sales'
         SFX.df_to_sheet(dfSFX, index=False, headers=False, sheet='SFX', start=row_numDigSFX, replace=False)
         SFXIE.df_to_sheet(dfSFXIE, index=False, headers=False, sheet='SFXIE', start=row_numDigSFXIE, replace=False)
+        print("SFX Web complete")
     except Exception as ex:
-        print("** SFX Web failed: ", ex)
+        print("Error: ", ex)
+    
         
 
 def sfxTotal():
@@ -207,7 +223,7 @@ def sfxTotal():
         df.columns = df.iloc[0]
         df = df.reindex(df.index.drop(0)).reset_index(drop=True)
         df.columns.name = None
-
+        
         # update dataframe index as 'Calendar Date'
         df.set_index('Date', inplace=True)
         
@@ -254,6 +270,7 @@ def sfxTotal():
         # 'total sales'
         SFX.df_to_sheet(SFXyest, index=False, headers=False, sheet='SFX', start=row_numTotSFX, replace=False)
         SFXIE.df_to_sheet(SFXIEyest, index=False, headers=False, sheet='SFXIE', start=row_numTotSFXIE, replace=False)
+        print("SFX Total complete")
     except Exception as ex:
         print("** SFX Total failed: ", ex)
         
@@ -319,6 +336,7 @@ def sfxTotalAOV():
         cell_list = []
         cell_list.append(cellToUpdate)
         gsSFXIE.update_cells(cell_list)
+        print("SFX AOV complete")
     except Exception as ex:
         print("** SFX Total AOV failed: ", ex)
 
@@ -330,7 +348,7 @@ def bdfr():
 
         # create dataframe
         df = pd.DataFrame(dailyXL)
-         
+                 
         # set header -- pandas
         dailyXL.columns = dailyXL.iloc[1]
         dailyXL = dailyXL.drop([0,1])
@@ -340,12 +358,12 @@ def bdfr():
         dailyXL['Date'] = pd.to_datetime(dailyXL['Date'])
 
         # filter 'Sales' excel row by previous day -- pandas
-        bdfrYest = dailyXL[(dailyXL['Date'] == dateYestXL)]
-            
-        
+        # bdfrYest = dailyXL[(dailyXL['Date'] == dateYestXL)]
+        bdfrLw = dailyXL[(dailyXL['Date'] >= dateLwGS) & (dailyXL['Date'] <= dateYestGS)]
+                
         # slice filtered row ready for transfer -- pandas
         # first slice
-        bdfr_1 = bdfrYest.loc[:, ['Date', 'Nombre de factures WEB', 'CA HT WEB']]
+        bdfr_1 = bdfrLw.loc[:, ['Date', 'Nombre de factures WEB', 'CA HT WEB']]
 
         # create 1st dataframe
         dfBDFR_1 = pd.DataFrame(bdfr_1)
@@ -361,7 +379,7 @@ def bdfr():
         BDFR = Spread('Daily Realised Sales Revenue', 'BDFR')
 
         # locate yesterday's date in gspread and parse row-number for reference cell
-        cellBDFR = gsBDFR.find(dateYestGS)
+        cellBDFR = gsBDFR.find(dateLwGS)
         row_numBDFR = 'D'+(str(cellBDFR.row))
 
         # append slice to google sheet
@@ -370,7 +388,7 @@ def bdfr():
 
         # slice filtered row ready for transfer -- pandas
         # second slice
-        bdfr_2 = bdfrYest.loc[:, ['Date', 'Commandé WEB', 'Passages caisse', 'CA HT']]
+        bdfr_2 = bdfrLw.loc[:, ['Date', 'Commandé WEB', 'Passages caisse', 'CA HT']]
 
         # create 1st dataframe
         dfBDFR_2 = pd.DataFrame(bdfr_2)
@@ -386,7 +404,7 @@ def bdfr():
         BDFR = Spread('Daily Realised Sales Revenue', 'BDFR')
 
         # locate yesterday's date in gspread and parse row-number for reference cell
-        cellBDFR = gsBDFR.find(dateYestGS)
+        cellBDFR = gsBDFR.find(dateLwGS)
         row_numBDFR = 'G'+(str(cellBDFR.row))
 
         # append slice to google sheet
@@ -395,8 +413,8 @@ def bdfr():
 
         # slice filtered row ready for transfer -- pandas
         # third slice
-        bdfr_3 = bdfrYest.loc[:, ['Date', 'CC transactions', 'HD transactions',
-                                'CC cash sales revenue', 'HD cash sales revenue']]
+        bdfr_3 = bdfrLw.loc[:, ['Date', 'CC transactions', 'HD transactions',
+                                        'CC cash sales revenue', 'HD cash sales revenue']]
         # create 1st dataframe
         dfBDFR_3 = pd.DataFrame(bdfr_3)
 
@@ -411,14 +429,13 @@ def bdfr():
         BDFR = Spread('Daily Realised Sales Revenue', 'BDFR')
 
         # locate yesterday's date in gspread and parse row-number for reference cell
-        cellBDFR = gsBDFR.find(dateYestGS)
+        cellBDFR = gsBDFR.find(dateLwGS)
         row_numBDFR = 'Q'+(str(cellBDFR.row))
 
         # append slice to google sheet
         BDFR.df_to_sheet(dfBDFR_3, index=False, headers=False, sheet='BDFR', start=row_numBDFR, replace=False)
-
-    except Exception as ex:
-        print("** BDFR failed: ",ex)
+except Exception as ex,
+print("**BDFR failed: ", ex)
 
 
 def capl():
@@ -435,11 +452,12 @@ def capl():
         dailyXL['Date'] = pd.to_datetime(dailyXL['Date'])
 
         # filter 'Sales' excel row by previous day -- pandas
-        caplYest = dailyXL[(dailyXL['Date'] == dateYestGS)]
-                 
+        # caplYest = dailyXL[(dailyXL['Date'] == dateYestGS)]
+        caplDates = dailyXL[(dailyXL['Date'] >= dateLwGS) & (dailyXL['Date'] <= dateYestGS)] 
+
         # slice filtered row ready for transfer -- pandas
-        caplDig = caplYest.iloc[:, [2, 3, 4, 3]]
-        caplTot = caplYest.iloc[:, [6, 7, 8]]
+        caplDig = caplDates.iloc[:, [2, 3, 4, 3]]
+        caplTot = caplDates.iloc[:, [6, 7, 8]]
 
         # opening destination file & sheet with gspread
         gsDaily = gc.open('Daily Realised Sales Revenue')
@@ -449,7 +467,7 @@ def capl():
         CAPL = Spread('Daily Realised Sales Revenue', 'CAPL')
 
         # locate yesterday's date in gspread and parse row-number for reference cell
-        cellCAPL = gsCAPL.find(dateYestGS)
+        cellCAPL = gsCAPL.find(dateLwGS)
         row_numDig = 'C'+(str(cellCAPL.row))
         row_numTot = 'G'+(str(cellCAPL.row))
 
@@ -457,10 +475,12 @@ def capl():
         # append slice to google sheet
         CAPL.df_to_sheet(caplDig, index=False, headers=False, sheet='CAPL', start=row_numDig, replace=False)
         CAPL.df_to_sheet(caplTot, index=False, headers=False, sheet='CAPL', start=row_numTot, replace=False)
+        print("CAPL complete")
     except Exception as ex:
-        print("** CAPL failed:", ex)
-            
+        print("**CAPL failed: ", ex)
         
+            
+      
 sapDigital()
 time.sleep(5)
 
